@@ -10,6 +10,7 @@ class Model():
 	def __init__(self, images_input, sequences_input, is_training, max_sequence_length, alphabet):
 		self.max_sequence_length = max_sequence_length
 		self.alphabet_size = len(alphabet)
+		self.batch_size = images_input.shape.as_list()[0]
 
 		features = self._conv_tower(images_input, is_training)
 		features = self._encode_coordinates(features)
@@ -49,7 +50,7 @@ class Model():
 				padding="same",
 				activation=tf.nn.relu)
 			pool = tf.layers.max_pooling2d(inputs=conv, pool_size=[2, 2], strides=2)
-			return tf.layers.dropout(inputs=pool, rate=0.9, training=is_training)
+			return tf.layers.dropout(inputs=pool, rate=0.2, training=is_training)
 
 		features = conv_block(inp, 32)
 		features = conv_block(features, 64)
@@ -66,35 +67,32 @@ class Model():
 		return features
 
 	def _encode_coordinates(self, features):
-		batch_size, h, w, _ = features.shape.as_list()
+		_, h, w, _ = features.shape.as_list()
 		x, y = tf.meshgrid(tf.range(w), tf.range(h))
 		w_loc = slim.one_hot_encoding(x, num_classes=w)
 		h_loc = slim.one_hot_encoding(y, num_classes=h)
 		loc = tf.concat([h_loc, w_loc], 2)
-		loc = tf.tile(tf.expand_dims(loc, 0), [batch_size, 1, 1, 1])
+		loc = tf.tile(tf.expand_dims(loc, 0), [self.batch_size, 1, 1, 1])
 		return tf.concat([features, loc], 3)	
 
 	def _flatten(self, features):
-		batch_size = features.get_shape().dims[0].value
 		feature_size = features.get_shape().dims[3].value
-		return tf.reshape(features, [batch_size, -1, feature_size])
+		return tf.reshape(features, [self.batch_size, -1, feature_size])
 
 	def _add_start_tokens(self, seq, start_sym):
-		batch_size = seq.shape.as_list()[0]
-		start_tokens = tf.ones([batch_size], dtype=tf.int32)*start_sym
+		start_tokens = tf.ones([self.batch_size], dtype=tf.int32)*start_sym
 		return tf.concat([tf.expand_dims(start_tokens, 1), seq], axis=1), start_tokens
 
 	def _prepare_sequences(self, seq):
 		lengths = tf.reduce_sum(tf.to_int32(tf.not_equal(seq, self.alphabet_size)), axis=1)
 		weights = tf.cast(tf.sequence_mask(lengths, self.max_sequence_length+1), dtype=tf.float32)
+		#weights = tf.ones((self.batch_size, self.max_sequence_length+1), dtype=tf.float32)
 		seq_train, start_tokens = self._add_start_tokens(
 			seq=seq, start_sym=self.alphabet_size+1)
 		sequences = slim.one_hot_encoding(seq_train, num_classes=self.alphabet_size+2)
 		return sequences, start_tokens, lengths, weights
 
 	def _create_attention(self, memory, sequences, lengths, features_h, start_tokens, num_units=32):
-		batch_size = memory.shape.as_list()[0]
-
 		train_helper = tf.contrib.seq2seq.TrainingHelper(
 			inputs=sequences,
 			sequence_length=lengths)
@@ -125,7 +123,7 @@ class Model():
 					helper=helper,
 					initial_state=output_cell.zero_state(
 						dtype=tf.float32,
-						batch_size=batch_size))
+						batch_size=self.batch_size))
 				outputs = tf.contrib.seq2seq.dynamic_decode(
 					decoder=decoder,
 					output_time_major=False,
@@ -138,7 +136,7 @@ class Model():
 
 		def alignments_mean(alignments):
 			alignments = tf.reduce_mean(alignments, axis=0, keep_dims=False)
-			alignments = tf.reshape(alignments, [batch_size, features_h, -1])
+			alignments = tf.reshape(alignments, [self.batch_size, features_h, -1])
 			return tf.expand_dims(alignments, axis=3)
 
 		alignments = alignments_mean(train_outputs[1].alignment_history.stack())
@@ -148,9 +146,9 @@ class Model():
 		to_complete = self.max_sequence_length + 1 - array_ops.shape(logits)[1]
 
 		def complete(logits, to_complete):
-			zeros_first = tf.zeros((batch_size, to_complete, self.alphabet_size), dtype=tf.float32)
-			zeros_last = tf.zeros((batch_size, to_complete, 1), dtype=tf.float32)
-			ones = tf.ones((batch_size, to_complete, 1), dtype=tf.float32)
+			zeros_first = tf.zeros((self.batch_size, to_complete, self.alphabet_size), dtype=tf.float32)
+			zeros_last = tf.zeros((self.batch_size, to_complete, 1), dtype=tf.float32)
+			ones = tf.ones((self.batch_size, to_complete, 1), dtype=tf.float32)
 			completion = tf.concat([zeros_first, ones, zeros_last], axis=2)
 			return tf.concat([logits, completion], axis=1)
 
@@ -165,8 +163,7 @@ class Model():
 		return tf.argmax(logits, axis=2)
 
 	def _create_loss(self, logits, sequences, weights):
-		batch_size = sequences.shape.as_list()[0]
-		end_tokens = tf.ones((batch_size, 1), dtype=tf.int32) * self.alphabet_size
+		end_tokens = tf.ones((self.batch_size, 1), dtype=tf.int32) * self.alphabet_size
 		targets = tf.concat([sequences, end_tokens], axis=1)
 		return tf.contrib.seq2seq.sequence_loss(
 			logits=logits,
