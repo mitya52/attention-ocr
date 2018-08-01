@@ -16,13 +16,14 @@ class Generator():
 		limit.
 	'''
 
-	def __init__(self, size, alphabet, end_sym, max_sequence_length, max_lines):
+	def __init__(self, size, alphabet, max_sequence_length, max_lines, end_sym=None):
 		self.size = size
 		self.alphabet = alphabet
-		self.end_sym = end_sym
 		self.max_sequence_length = max_sequence_length
 		self.max_lines = max_lines
 		self.line_length = max_sequence_length//max_lines
+		if not end_sym:
+			self.end_sym = len(alphabet)
 
 		self.font_name = 'font.ttf'
 		self.font = ImageFont.truetype(self.font_name, 25)
@@ -66,11 +67,43 @@ class Generator():
 			img = cv2.resize(img, self.size)
 		return img, np.array(self._to_sequence(text))
 
+
+class BatchGenerator(Generator):
+
+	def __init__(self, size, alphabet, max_sequence_length, max_lines, batch_size, end_sym=None):
+		self.batch_size = batch_size
+		super(BatchGenerator, self).__init__(size, alphabet, max_sequence_length, max_lines, end_sym)
+
+	def generate_batch(self):
+		'''
+			Generator of batches (X, y) where:
+				X is np.array of size [batch_size, img_h, img_w, 1] and dtype tf.float32
+				y is np.array of size [batch_size, max_sequence_length] and dtype tf.int32
+		'''
+
+		w, h = self.size
+		sl = self.max_sequence_length
+		bs = self.batch_size
+
+		X = np.zeros((bs, h, w), dtype=np.uint8)
+		y = np.zeros((bs, sl), dtype=np.int32)
+
+		while True:
+			length = np.random.randint(1, self.max_sequence_length)
+			for i in range(bs):
+				X[i], y[i] = self.generate(length)
+			yield np.expand_dims(np.float32(X / 256.), axis=3), y
+
+
 if __name__ == '__main__':
 	size = (200, 200)
 	alphabet = sorted('ABCDEFGHIGKLMNOPQRSTUVWXYZ0123456789')
 
-	g = Generator(size, alphabet, -1, 9, 3)
+	g = Generator(
+		size=size,
+		alphabet=alphabet,
+		max_sequence_length=9,
+		max_lines=3)
 
 	while True:
 		img, seq = g.generate()
