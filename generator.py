@@ -95,9 +95,66 @@ class BatchGenerator(Generator):
 			yield np.expand_dims(np.float32(X / 256.), axis=3), y
 
 
+class PrecomputeBatchGenerator(Generator):
+
+	def __init__(self, size, alphabet, max_sequence_length, max_lines, batch_size, end_sym=None, precompute_size=100000):
+		self.batch_size = batch_size
+		self.precompute_size = precompute_size // (max_sequence_length - 1)
+		super(PrecomputeBatchGenerator, self).__init__(size, alphabet, max_sequence_length, max_lines, end_sym)
+		self._precompute()
+
+	def _precompute(self):
+		self.data = dict()
+		self.data_process = dict()
+		for length in range(1, self.max_sequence_length):
+			self.data[length] = [self.generate(length) for _ in range(self.precompute_size)]
+			self.data_process[length] = 0
+
+	def _random_length(self):
+		valid_keys = [k for k, v in self.data_process.items() if v < self.precompute_size // self.batch_size]
+		if not valid_keys:
+			valid_keys = list(self.data_process.keys())
+			self.data_process = {k: 0 for k in valid_keys}
+		length = np.random.choice(valid_keys)
+		batch = self.data_process[length]
+		self.data_process[length] = batch + 1
+		return length, batch
+
+	def length(self):
+		return (self.precompute_size // self.batch_size) * (self.max_sequence_length - 1)
+
+	def generate_batch(self):
+		'''
+			Generator of batches (X, y) where:
+				X is np.array of size [batch_size, img_h, img_w, 1] and dtype tf.float32
+				y is np.array of size [batch_size, max_sequence_length] and dtype tf.int32
+		'''
+
+		w, h = self.size
+		sl = self.max_sequence_length
+		bs = self.batch_size
+
+		X = np.zeros((bs, h, w), dtype=np.uint8)
+		y = np.zeros((bs, sl), dtype=np.int32)
+
+		while True:
+			length, batch = self._random_length()
+			for i in range(bs):
+				X[i], y[i] = self.data[length][batch*bs + i]
+			yield np.expand_dims(np.float32(X / 256.), axis=3), y
+
+
 if __name__ == '__main__':
 	size = (200, 200)
 	alphabet = sorted('ABCDEFGHIGKLMNOPQRSTUVWXYZ0123456789')
+
+	pg = PrecomputeBatchGenerator(
+		size=size,
+		alphabet=alphabet,
+		max_sequence_length=9,
+		max_lines=3,
+		batch_size=2,
+		precompute_size=20)
 
 	g = Generator(
 		size=size,
@@ -106,6 +163,8 @@ if __name__ == '__main__':
 		max_lines=3)
 
 	while True:
+		for _ in pg.generate_batch():
+			break
 		img, seq = g.generate()
 		print(seq)
 		cv2.imshow('image', img)

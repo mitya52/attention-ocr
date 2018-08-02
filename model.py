@@ -7,7 +7,7 @@ import numpy as np
 
 class Model():
 
-	def __init__(self, images_input, sequences_input, is_training, max_sequence_length, alphabet):
+	def __init__(self, images_input, sequences_input, is_training, max_sequence_length, alphabet, alignments_type='mean'):
 		self.max_sequence_length = max_sequence_length
 		self.alphabet_size = len(alphabet)
 		self.batch_size = images_input.shape.as_list()[0]
@@ -24,7 +24,8 @@ class Model():
 			sequences=sequences,
 			lengths=lengths,
 			features_h=features_h,
-			start_tokens=start_tokens)
+			start_tokens=start_tokens,
+			alignments_type=alignments_type)
 		self.lengths = lengths
 		self.weights = weights
 		self.train_predictions = self._create_train_predictions(logits)
@@ -92,7 +93,7 @@ class Model():
 		sequences = slim.one_hot_encoding(seq_train, num_classes=self.alphabet_size+2)
 		return sequences, start_tokens, lengths, weights
 
-	def _create_attention(self, memory, sequences, lengths, features_h, start_tokens, num_units=32):
+	def _create_attention(self, memory, sequences, lengths, features_h, start_tokens, alignments_type, num_units=32):
 		train_helper = tf.contrib.seq2seq.TrainingHelper(
 			inputs=sequences,
 			sequence_length=lengths)
@@ -139,7 +140,18 @@ class Model():
 			alignments = tf.reshape(alignments, [self.batch_size, features_h, -1])
 			return tf.expand_dims(alignments, axis=3)
 
-		alignments = alignments_mean(train_outputs[1].alignment_history.stack())
+		def alignments_full(alignments):
+			depth = array_ops.shape(alignments)[0]
+			alignments = tf.transpose(alignments, [1, 0, 2])
+			alignments = tf.reshape(alignments, [self.batch_size, depth, features_h, -1])
+			return alignments
+
+		if alignments_type == 'mean':
+			alignments = alignments_mean(train_outputs[1].alignment_history.stack())
+		elif alignments_type == 'full':
+			alignments = alignments_full(pred_outputs[1].alignment_history.stack())
+		else:
+			raise ValueError('Unknown alignments type "{}"'.format(alignments_type))
 
 		# complete logits to [batch_size, max_sequence_length+1, alphabet_size]
 		logits = train_outputs[0].rnn_output

@@ -2,7 +2,7 @@
 import tensorflow as tf
 import numpy as np
 
-from generator import BatchGenerator
+from generator import BatchGenerator, PrecomputeBatchGenerator
 from model import Model
 
 from imgaug import augmenters as iaa
@@ -47,12 +47,20 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 	tf.summary.image('alignments', endpoints['alignments'])
 	merged = tf.summary.merge_all()
 
-	generator = BatchGenerator(
+	train_generator = PrecomputeBatchGenerator(
 		size=image_size,
 		alphabet=alphabet,
 		max_sequence_length=max_sequence_length,
-		max_lines=1,
+		max_lines=3,
 		batch_size=batch_size)
+
+	val_generator = PrecomputeBatchGenerator(
+		size=image_size,
+		alphabet=alphabet,
+		max_sequence_length=max_sequence_length,
+		max_lines=3,
+		batch_size=batch_size,
+		precompute_size=1000)
 
 	saver = tf.train.Saver()
 	with tf.Session() as sess:
@@ -70,13 +78,15 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 
 		for e in range(epochs):
 			t = time.time()
-			for step, (imgs, seqs) in enumerate(generator.generate_batch()):
+			for step, (imgs, seqs) in enumerate(train_generator.generate_batch()):
 				if step < steps:
 					summary, _ = sess.run([merged, train_op], feed_dict={images_input: imgs, sequences_input: seqs, is_training: True})
 				else:
-					predictions = sess.run([endpoints['predictions']], feed_dict={images_input: imgs, is_training: False})[0]
-					sequences = seqs
 					break
+			for imgs, seqs in val_generator.generate_batch():
+				predictions = sess.run([endpoints['predictions']], feed_dict={images_input: imgs, is_training: False})[0]
+				sequences = seqs
+				break
 
 			train_writer.add_summary(summary, e)
 			print("Epoch {} ends with time {:.4f}".format(e, time.time() - t))
@@ -87,13 +97,12 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 
 if __name__ == '__main__':
 
-	image_size = (100, 50)
-	
-	alphabet = sorted(list('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'))
-	max_sequence_length = 5
-	
-	epochs = 1000
-	steps = 200
-	batch_size = 32
+	image_size = network['image_size']
+	alphabet = network['alphabet']
+	max_sequence_length = network['max_sequence_length']
+
+	epochs = network['epochs']
+	steps = network['steps']
+	batch_size = network['batch_size']
 
 	train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length)
