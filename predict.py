@@ -45,13 +45,17 @@ def predict(image_size, alphabet, max_sequence_length):
 			predictions, alignments = sess.run([endpoints['predictions'], endpoints['alignments']], feed_dict={images_input: imgs})
 			img = np.squeeze(imgs[0])
 
-			print("Predicted: {}".format(''.join([alphabet[x] for x in predictions[0] if x < len(alphabet)])))
+			predicted_text = ''.join([alphabet[x] for x in predictions[0] if x < len(alphabet)])
+			print("Predicted: {}".format(predicted_text))
 			cv2.imshow('original', img)
 
-			for alignment in alignments[0]:
+			font = cv2.FONT_HERSHEY_SIMPLEX
+			for ind, alignment in enumerate(alignments[0]):
 				h, w = img.shape[:2]
 				img_al = cv2.resize(alignment, (w, h), interpolation=cv2.INTER_AREA)
 				highlighted = cv2.resize((img + img_al * 2) / 3., (500, 300), interpolation=cv2.INTER_AREA)
+				font = cv2.FONT_HERSHEY_SIMPLEX
+				cv2.putText(highlighted, predicted_text[ind], (50, 50), font, 2, (255,255,255), 2, cv2.LINE_AA)
 				cv2.imshow('alignment', highlighted)
 				k = cv2.waitKey(1000) & 0xFF
 				if k == 27:
