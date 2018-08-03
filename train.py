@@ -5,7 +5,7 @@ import numpy as np
 from generator import BatchGenerator, PrecomputeBatchGenerator
 from model import Model
 
-from imgaug import augmenters as iaa
+from config import network
 
 def get_number_parameters(variables):
 	total_parameters = 0
