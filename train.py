@@ -78,21 +78,24 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length, 
 		if ckpt and ckpt.model_checkpoint_path:
 			saver.restore(sess, ckpt.model_checkpoint_path)
 
+		add_eos_epoch = 60
 		for e in range(epochs):
 			t = time.time()
 			for step, (imgs, seqs) in enumerate(train_generator.generate_batch()):
 				if step < steps:
-					summary, _ = sess.run([merged, train_op], feed_dict={
+					sess.run([train_op], feed_dict={
 						images_input: imgs,
 						sequences_input: seqs,
 						is_training: True,
-						add_eos: e > 60})
+						add_eos: e >= add_eos_epoch})
 				else:
 					break
 			for imgs, seqs in val_generator.generate_batch():
-				predictions = sess.run([endpoints['predictions']], feed_dict={
+				summary, predictions = sess.run([merged, endpoints['predictions']], feed_dict={
 					images_input: imgs,
-					is_training: False})[0]
+					sequences_input: seqs,
+					is_training: False,
+					add_eos: e >= add_eos_epoch})
 				sequences = seqs
 				break
 
