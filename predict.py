@@ -7,7 +7,7 @@ from generator import BatchGenerator
 from model import Model
 from config import network
 
-def predict(image_size, alphabet, max_sequence_length):
+def predict(image_size, alphabet, max_sequence_length, max_lines):
 	img_w, img_h = image_size
 
 	images_input = tf.placeholder(shape=(1, img_h, img_w, 1), dtype=tf.float32)
@@ -74,5 +74,6 @@ if __name__ == '__main__':
 	image_size = network['image_size']
 	alphabet = network['alphabet']
 	max_sequence_length = network['max_sequence_length']
+	max_lines = network['max_lines']
 
-	predict(image_size, alphabet, max_sequence_length)
+	predict(image_size, alphabet, max_sequence_length, max_lines)

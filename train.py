@@ -17,7 +17,7 @@ def get_number_parameters(variables):
 		total_parameters += variable_parameters
 	return total_parameters
 
-def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
+def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length, max_lines):
 	import time
 
 	img_w, img_h = image_size
@@ -53,14 +53,14 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 		size=image_size,
 		alphabet=alphabet,
 		max_sequence_length=max_sequence_length,
-		max_lines=3,
+		max_lines=max_lines,
 		batch_size=batch_size)
 
 	val_generator = PrecomputeBatchGenerator(
 		size=image_size,
 		alphabet=alphabet,
 		max_sequence_length=max_sequence_length,
-		max_lines=3,
+		max_lines=max_lines,
 		batch_size=batch_size,
 		precompute_size=1000)
 
@@ -108,9 +108,10 @@ if __name__ == '__main__':
 	image_size = network['image_size']
 	alphabet = network['alphabet']
 	max_sequence_length = network['max_sequence_length']
+	max_lines = network['max_lines']
 
 	epochs = network['epochs']
 	steps = network['steps']
 	batch_size = network['batch_size']
 
-	train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length)
+	train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length, max_lines)
