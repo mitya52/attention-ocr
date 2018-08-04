@@ -26,17 +26,11 @@ class Model():
 			features_h=features_h,
 			start_tokens=start_tokens,
 			alignments_type=alignments_type)
-		self.lengths = lengths
-		self.weights = weights
-		self.train_predictions = self._create_train_predictions(logits)
 		self.loss = self._create_loss(logits, sequences_input, weights)
 
 	def endpoints(self):
 		return {
 			"loss": self.loss,
-			"lengths": self.lengths,
-			"weights": self.weights,
-			"train_predictions": self.train_predictions,
 			"alignments": self.alignments,
 			"predictions": self.predictions,
 		}
@@ -85,9 +79,8 @@ class Model():
 		return tf.concat([tf.expand_dims(start_tokens, 1), seq], axis=1), start_tokens
 
 	def _prepare_sequences(self, seq):
-		lengths = tf.reduce_sum(tf.to_int32(tf.not_equal(seq, self.alphabet_size)), axis=1)
-		weights = tf.cast(tf.sequence_mask(lengths, self.max_sequence_length+1), dtype=tf.float32)
-		#weights = tf.ones((self.batch_size, self.max_sequence_length+1), dtype=tf.float32)
+		lengths = tf.reduce_sum(tf.to_int32(tf.not_equal(seq, self.alphabet_size)), axis=1) + 1 # add eof symbol
+		weights = tf.cast(tf.sequence_mask(lengths, self.max_sequence_length), dtype=tf.float32)
 		seq_train, start_tokens = self._add_start_tokens(
 			seq=seq, start_sym=self.alphabet_size+1)
 		sequences = slim.one_hot_encoding(seq_train, num_classes=self.alphabet_size+2)
@@ -155,7 +148,7 @@ class Model():
 
 		# complete logits to [batch_size, max_sequence_length+1, alphabet_size]
 		logits = train_outputs[0].rnn_output
-		to_complete = self.max_sequence_length + 1 - array_ops.shape(logits)[1]
+		to_complete = self.max_sequence_length - array_ops.shape(logits)[1]
 
 		def complete(logits, to_complete):
 			zeros_first = tf.zeros((self.batch_size, to_complete, self.alphabet_size), dtype=tf.float32)
@@ -171,43 +164,8 @@ class Model():
 
 		return logits, alignments, tf.argmax(tf.nn.sigmoid(pred_outputs[0].rnn_output), axis=2)
 
-	def _create_train_predictions(self, logits):
-		return tf.argmax(logits, axis=2)
-
-	def _create_loss(self, logits, sequences, weights):
-		end_tokens = tf.ones((self.batch_size, 1), dtype=tf.int32) * self.alphabet_size
-		targets = tf.concat([sequences, end_tokens], axis=1)
+	def _create_loss(self, logits, targets, weights):
 		return tf.contrib.seq2seq.sequence_loss(
 			logits=logits,
 			targets=targets,
 			weights=weights)
-
-if __name__ == '__main__':
-	img_w, img_h = 100, 20
-	max_sequnce_length = 20
-	batch_size = 32
-	alphabet = list('0123456789')
-
-	images_input = tf.placeholder(shape=(batch_size, img_h, img_w, 1), dtype=tf.float32)
-	sequences_input = tf.placeholder(shape=(batch_size, max_sequnce_length), dtype=tf.int32)
-	
-	model = Model(images_input, sequences_input, max_sequnce_length, alphabet)
-	endpoints = model.endpoints()
-
-	train_op = tf.contrib.layers.optimize_loss(
-			endpoints['loss'],
-			tf.train.get_global_step(),
-			optimizer='Adam',
-			learning_rate=0.001,
-			summaries=['loss', 'learning_rate'])
-
-	with tf.Session() as sess:
-		init = tf.global_variables_initializer()
-		sess.run(init)
-
-		feed_dict = {
-			images_input: np.random.random((batch_size, img_h, img_w, 1)),
-			sequences_input: np.random.randint(0, len(alphabet), size=(batch_size, max_sequnce_length)),
-		}
-		fetched = sess.run(train_op, feed_dict=feed_dict)
-		print(fetched.shape)
