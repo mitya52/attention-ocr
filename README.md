@@ -22,6 +22,9 @@ Test model with visualizing attention weights on each decoding step (use pretrai
 ./predict.py
 ```
 
+Example of predict.py output:<br>
+<img src="https://github.com/mitya52/attention-ocr/blob/master/attention-weights.gif" width="300" height="140" />
+
 ## Authors
 
 **Dimitry Ageev** - [mitya52](https://github.com/mitya52)
