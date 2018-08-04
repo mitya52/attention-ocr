@@ -49,7 +49,6 @@ def predict(image_size, alphabet, max_sequence_length, max_lines):
 
 			predicted_text = ''.join([alphabet[x] for x in predictions[0] if x < len(alphabet)])
 			print("Predicted: {}".format(predicted_text))
-			cv2.imshow('original', img)
 
 			font = cv2.FONT_HERSHEY_SIMPLEX
 			for ind, alignment in enumerate(alignments[0]):
