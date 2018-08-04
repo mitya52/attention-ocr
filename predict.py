@@ -13,11 +13,13 @@ def predict(image_size, alphabet, max_sequence_length):
 	images_input = tf.placeholder(shape=(1, img_h, img_w, 1), dtype=tf.float32)
 	sequences_input = tf.placeholder(shape=(1, max_sequence_length), dtype=tf.int32)
 	is_training = tf.constant(False, dtype=tf.bool)
+	add_eos = tf.constant(False, dtype=tf.bool)
 
 	model = Model(
 		images_input,
 		sequences_input,
 		is_training,
+		add_eos,
 		max_sequence_length,
 		alphabet,
 		alignments_type='full')
@@ -51,6 +53,8 @@ def predict(image_size, alphabet, max_sequence_length):
 
 			font = cv2.FONT_HERSHEY_SIMPLEX
 			for ind, alignment in enumerate(alignments[0]):
+				if ind == len(predicted_text):
+					break
 				h, w = img.shape[:2]
 				img_al = cv2.resize(alignment, (w, h), interpolation=cv2.INTER_AREA)
 				highlighted = cv2.resize((img + img_al * 2) / 3., (500, 300), interpolation=cv2.INTER_AREA)

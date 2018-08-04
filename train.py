@@ -25,11 +25,13 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 	images_input = tf.placeholder(shape=(batch_size, img_h, img_w, 1), dtype=tf.float32)
 	sequences_input = tf.placeholder(shape=(batch_size, max_sequence_length), dtype=tf.int32)
 	is_training = tf.placeholder(shape=(), dtype=tf.bool)
+	add_eos = tf.placeholder(shape=(), dtype=tf.bool)
 
 	model = Model(
 		images_input,
 		sequences_input,
 		is_training,
+		add_eos,
 		max_sequence_length,
 		alphabet)
 	endpoints = model.endpoints()
@@ -80,11 +82,17 @@ def train(epochs, steps, batch_size, image_size, alphabet, max_sequence_length):
 			t = time.time()
 			for step, (imgs, seqs) in enumerate(train_generator.generate_batch()):
 				if step < steps:
-					summary, _ = sess.run([merged, train_op], feed_dict={images_input: imgs, sequences_input: seqs, is_training: True})
+					summary, _ = sess.run([merged, train_op], feed_dict={
+						images_input: imgs,
+						sequences_input: seqs,
+						is_training: True,
+						add_eos: e > 60})
 				else:
 					break
 			for imgs, seqs in val_generator.generate_batch():
-				predictions = sess.run([endpoints['predictions']], feed_dict={images_input: imgs, is_training: False})[0]
+				predictions = sess.run([endpoints['predictions']], feed_dict={
+					images_input: imgs,
+					is_training: False})[0]
 				sequences = seqs
 				break
 

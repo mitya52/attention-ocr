@@ -7,7 +7,14 @@ import numpy as np
 
 class Model():
 
-	def __init__(self, images_input, sequences_input, is_training, max_sequence_length, alphabet, alignments_type='mean'):
+	def __init__(self,
+			images_input,
+			sequences_input,
+			is_training,
+			add_eos,
+			max_sequence_length,
+			alphabet,
+			alignments_type='mean'):
 		self.max_sequence_length = max_sequence_length
 		self.alphabet_size = len(alphabet)
 		self.batch_size = images_input.shape.as_list()[0]
@@ -18,7 +25,8 @@ class Model():
 		features = self._flatten(features)
 
 		sequences, start_tokens, lengths, weights = self._prepare_sequences(
-			seq=sequences_input)
+			seq=sequences_input,
+			add_eos=add_eos)
 		logits, self.alignments, self.predictions = self._create_attention(
 			memory=features,
 			sequences=sequences,
@@ -78,8 +86,12 @@ class Model():
 		start_tokens = tf.ones([self.batch_size], dtype=tf.int32)*start_sym
 		return tf.concat([tf.expand_dims(start_tokens, 1), seq], axis=1), start_tokens
 
-	def _prepare_sequences(self, seq):
-		lengths = tf.reduce_sum(tf.to_int32(tf.not_equal(seq, self.alphabet_size)), axis=1) + 1 # add eof symbol
+	def _prepare_sequences(self, seq, add_eos):
+		lengths = tf.reduce_sum(tf.to_int32(tf.not_equal(seq, self.alphabet_size)), axis=1)
+		lengths = tf.cond(
+			add_eos,
+			lambda: lengths + 1,
+			lambda: lengths)
 		weights = tf.cast(tf.sequence_mask(lengths, self.max_sequence_length), dtype=tf.float32)
 		seq_train, start_tokens = self._add_start_tokens(
 			seq=seq, start_sym=self.alphabet_size+1)
