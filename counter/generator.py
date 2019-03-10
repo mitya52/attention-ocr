@@ -6,6 +6,9 @@ from itertools import product
 from typing import Optional, Tuple, List
 
 
+__all__ = ['Generator']
+
+
 class Generator:
     def __init__(self,
                  grid_size: Tuple[int, int],
