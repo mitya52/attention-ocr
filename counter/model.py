@@ -106,6 +106,43 @@ class Attention:
 
         return tf.argmax(tf.nn.sigmoid(outputs[0].rnn_output), axis=2)
 
+    def _create_state(self,
+                      prefix: str,
+                      reuse: bool) -> tf.Tensor:
+        '''
+        NOTE: this is experimental state creation from feature map, but works better than zero_state
+        TODO: check helpfulness of birnn (may be only dense layer needed)
+        '''
+        cell_fw = tf.nn.rnn_cell.GRUCell(num_units=self.num_units,
+                                         reuse=reuse,
+                                         name='{}_cell_fw'.format(prefix))
+        cell_bw = tf.nn.rnn_cell.GRUCell(num_units=self.num_units,
+                                         reuse=reuse,
+                                         name='{}_cell_bw'.format(prefix))
+        x = tf.unstack(self.feature_map, axis=1)
+        outputs, _, _ = rnn.static_bidirectional_rnn(
+            inputs=x,
+            cell_fw=cell_fw,
+            cell_bw=cell_bw,
+            initial_state_fw=cell_fw.zero_state(self.batch_size, dtype=tf.float32),
+            initial_state_bw=cell_bw.zero_state(self.batch_size, dtype=tf.float32),
+            dtype=tf.float32)
+        x = tf.stack(outputs, axis=1)
+        x = tf.layers.dense(inputs=x,
+                            units=self.num_units,
+                            activation='relu',
+                            name='{}_dense_state'.format(prefix))
+        return tf.reduce_mean(input_tensor=x, axis=1)
+
+    def _initial_state(self,
+                       cell: rnn.OutputProjectionWrapper,
+                       reuse: bool,
+                       create_state: bool = False) -> seq2seq.AttentionWrapperState:
+        state = cell.zero_state(self.batch_size, dtype=tf.float32)
+        if create_state:
+            state = state.clone(cell_state=self._create_state(reuse=reuse, prefix='s'))
+        return state
+
     def _decode(self,
                 helper: seq2seq.Helper,
                 reuse: bool = False):
@@ -113,7 +150,7 @@ class Attention:
             attention_mechanism = seq2seq.BahdanauAttention(
                 num_units=self.num_units,
                 memory=self.feature_map)
-            rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(
+            rnn_cell = tf.nn.rnn_cell.GRUCell(
                 num_units=self.num_units)
             attention_cell = seq2seq.AttentionWrapper(
                 cell=rnn_cell,
@@ -127,9 +164,7 @@ class Attention:
             decoder = tf.contrib.seq2seq.BasicDecoder(
                 cell=output_cell,
                 helper=helper,
-                initial_state=output_cell.zero_state(
-                    dtype=tf.float32,
-                    batch_size=self.batch_size))
+                initial_state=self._initial_state(cell=output_cell, reuse=reuse))
 
             outputs = tf.contrib.seq2seq.dynamic_decode(
                 decoder=decoder,
