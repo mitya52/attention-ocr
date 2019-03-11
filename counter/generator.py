@@ -4,7 +4,7 @@ from itertools import product
 from typing import Tuple
 
 
-__all__ = ['Generator']
+__all__ = ['BatchGenerator']
 
 
 class Generator:
