@@ -7,6 +7,10 @@ from counter.model import Model
 from typing import Tuple
 
 
+def generate_random_name(length: int = 8):
+    return ''.join([np.random.choice(list('0123456789')) for _ in range(length)])
+
+
 def train(epochs: int,
           steps: int,
           batch_size: int,
@@ -29,6 +33,9 @@ def train(epochs: int,
         optimizer='Adam',
         learning_rate=0.001,
         summaries=['loss'])
+    tf.summary.image('input_images', images_input)
+    tf.summary.image('alignments', model.prediction_alignments_mean)
+    merged = tf.summary.merge_all()
 
     generator = BatchGenerator(
         batch_size=batch_size,
@@ -39,23 +46,32 @@ def train(epochs: int,
         init = tf.global_variables_initializer()
         sess.run(init)
 
+        train_writer = tf.summary.FileWriter(
+            'logs/{}'.format(generate_random_name()), sess.graph)
+
         for e in range(epochs):
             for step, (images, sequences) in enumerate(generator):
                 sess.run([train_op], feed_dict={
                     images_input: images,
                     sequences_input: sequences,
-                    is_training: True})
+                    is_training: True
+                })
                 if step == steps:
                     break
 
             images, sequences = next(generator)
-            predictions, losses = sess.run([model.predictions, model.loss], feed_dict={
-                images_input: images,
-                sequences_input: sequences,
-                is_training: False})
+            losses, predictions, summary = sess.run(
+                [model.loss, model.predictions, merged], feed_dict={
+                    images_input: images,
+                    sequences_input: sequences,
+                    is_training: False
+                })
+
             print('Epoch {} loss: {}'.format(e, np.mean(losses)))
             print('Sequence:   {}'.format(sequences[0]))
             print('Prediction: {}'.format(predictions[0]))
+
+            train_writer.add_summary(summary, e)
 
 
 if __name__ == '__main__':
