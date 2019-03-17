@@ -94,7 +94,7 @@ class Attention:
             lambda: logits,
             lambda: complete_with_eos(logits, to_complete))
 
-        return logits
+        return logits, outputs[1].alignment_history.stack()
 
     def create_predict_branch(self):
         helper = seq2seq.GreedyEmbeddingHelper(
@@ -104,7 +104,7 @@ class Attention:
 
         outputs = self._decode(helper=helper, reuse=True)
 
-        return tf.argmax(tf.nn.sigmoid(outputs[0].rnn_output), axis=2)
+        return tf.nn.sigmoid(outputs[0].rnn_output), outputs[1].alignment_history.stack()
 
     def _create_state(self,
                       prefix: str,
@@ -200,10 +200,16 @@ class Model:
             sequences=sequences_input,
             max_sequence_length=max_sequence_length)
 
+        logits, _ = attention_model.create_train_branch()
         self.loss = self._create_loss(
+            logits=logits,
             sequences_input=sequences_input,
             attention_model=attention_model)
-        self.predictions = attention_model.create_predict_branch()
+
+        probabilities, alignments = attention_model.create_predict_branch()
+        self.predictions = tf.argmax(probabilities, axis=2)
+        self.prediction_alignments_full = self._alignments_full(alignments, ct_out_shape)
+        self.prediction_alignments_mean = self._alignments_mean(alignments, ct_out_shape)
 
     @staticmethod
     def _encode_coordinates(feature_map):
@@ -216,14 +222,29 @@ class Model:
         return tf.concat([feature_map, loc], 3)
 
     @staticmethod
-    def _create_loss(sequences_input: tf.Tensor,
+    def _create_loss(logits: tf.Tensor,
+                     sequences_input: tf.Tensor,
                      attention_model: Attention) -> tf.Tensor:
-        logits = attention_model.create_train_branch()
         weights = tf.sequence_mask(attention_model.lengths, attention_model.max_sequence_length)
         return seq2seq.sequence_loss(
             logits=logits,
             targets=sequences_input,
             weights=tf.cast(weights, dtype=tf.float32))
+
+    @staticmethod
+    def _alignments_mean(alignments: tf.Tensor,
+                         ct_out_shape: tf.TensorShape):
+        alignments = tf.reduce_mean(alignments, axis=0, keep_dims=False)
+        alignments = tf.reshape(alignments, [-1, ct_out_shape[1], ct_out_shape[2]])
+        return alignments
+
+    @staticmethod
+    def _alignments_full(alignments: tf.Tensor,
+                         ct_out_shape: tf.TensorShape):
+        depth = array_ops.shape(alignments)[0]
+        alignments = tf.transpose(alignments, [1, 0, 2])
+        alignments = tf.reshape(alignments, [-1, depth, ct_out_shape[1], ct_out_shape[2]])
+        return alignments
 
 
 if __name__ == '__main__':
@@ -255,10 +276,11 @@ if __name__ == '__main__':
         images = np.ones((batch_size,) + image_shape, dtype=np.float32)
         sequences = np.zeros((batch_size, max_sequence_length), dtype=np.float32)
         sequences[:, max_sequence_length // 2:] = 1
-        sess.run([train_op], feed_dict={
+        fetched = sess.run([train_op], feed_dict={
             images_input: images,
             sequences_input: sequences,
             is_training: True})
+        print(fetched[0].shape)
 
     # check test
     with tf.Session() as sess:
@@ -267,6 +289,14 @@ if __name__ == '__main__':
 
         images = np.ones((batch_size,) + image_shape, dtype=np.float32)
         sequences[:, max_sequence_length // 2:] = 1
-        fetched = sess.run([model.predictions], feed_dict={
-            images_input: images,
-            is_training: False})
+        fetched = sess.run([
+                model.predictions,
+                model.prediction_alignments_full,
+                model.prediction_alignments_mean],
+            feed_dict={
+                images_input: images,
+                is_training: False
+            })
+        print(fetched[0].shape)
+        print(fetched[1].shape)
+        print(fetched[2].shape)
